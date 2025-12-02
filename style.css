@@ -1,0 +1,236 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, #3c3c3c, #2d2d2d);
+    padding: 8px 16px;
+    border-bottom: 1px solid #1a1a1a;
+}
+
+.toolbar-left {
+    display: flex;
+    align-items: center;
+}
+
+.logo {
+    font-size: 18px;
+    font-weight: 600;
+    color: #58a6ff;
+}
+
+.toolbar-center {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.toolbar-center input {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    color: #d4d4d4;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    width: 200px;
+}
+
+.toolbar-center input:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+.toolbar-center select {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    color: #d4d4d4;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.toolbar-center select:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+.toolbar-right {
+    display: flex;
+    gap: 8px;
+}
+
+.btn {
+    background: #404040;
+    border: 1px solid #505050;
+    color: #d4d4d4;
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    background: #505050;
+}
+
+.btn-primary {
+    background: #0e639c;
+    border-color: #1177bb;
+}
+
+.btn-primary:hover {
+    background: #1177bb;
+}
+
+.main-area {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 200px;
+    background: #252526;
+    border-right: 1px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-header {
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #858585;
+    border-bottom: 1px solid #1a1a1a;
+}
+
+#fileList {
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+}
+
+#fileList li {
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid #2d2d2d;
+    transition: background 0.2s;
+}
+
+#fileList li:hover {
+    background: #2a2d2e;
+}
+
+.editor-wrapper {
+    flex: 1;
+    overflow: hidden;
+}
+
+.CodeMirror {
+    height: 100% !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.statusbar {
+    display: flex;
+    justify-content: space-between;
+    background: #007acc;
+    padding: 4px 16px;
+    font-size: 12px;
+    color: #fff;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: #2d2d2d;
+    border-radius: 8px;
+    width: 400px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    border-bottom: 1px solid #3c3c3c;
+}
+
+.modal-body {
+    padding: 16px;
+}
+
+.modal-body input {
+    width: 100%;
+    background: #1e1e1e;
+    border: 1px solid #3c3c3c;
+    color: #d4d4d4;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.modal-body input:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+.modal-footer {
+    padding: 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #3c3c3c;
+}
+
+.CodeMirror-activeline-background {
+    background: #2c313c !important;
+}
+
+.CodeMirror-gutters {
+    background: #1e1e1e !important;
+    border-right: 1px solid #3c3c3c !important;
+}
+
+.CodeMirror-linenumber {
+    color: #858585 !important;
+}
