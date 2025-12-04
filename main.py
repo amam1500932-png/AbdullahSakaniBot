@@ -12,6 +12,7 @@ CHAT_ID = os.environ.get('CHAT_ID')
 
 SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
 CHECK_INTERVAL = 300
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
