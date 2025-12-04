@@ -3,151 +3,120 @@ import aiohttp
 import json
 import os
 from datetime import datetime
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
 import logging
 
-# -----------------------------
-# Environment Variables
-# -----------------------------
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHAT_ID = os.environ.get('CHAT_ID')
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
 SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
-CHECK_INTERVAL = 60   # كل دقيقة
+CHECK_INTERVAL = 300
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("SAKANI-BOT")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 previous_lands = {}
 
-# -----------------------------
-# Fetch API
-# -----------------------------
-async def fetch_lands_data():
+async def fetch_lands():
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json",
+        "Accept-Language": "ar",
+    }
+
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
-            'Accept-Language': 'ar',
-        }
-
         async with aiohttp.ClientSession() as session:
-            async with session.get(SAKANI_API_URL, headers=headers, timeout=20) as response:
-                if response.status == 200:
-                    return await response.json()
+            async with session.get(SAKANI_API_URL, headers=headers, timeout=20) as res:
+                if res.status == 200:
+                    return await res.json()
                 else:
-                    logger.warning(f"Sakani error {response.status} (Site may be under maintenance)")
+                    logger.warning(f"Sakani maintenance: {res.status}")
                     return None
-
     except Exception as e:
-        logger.error(f"Fetch error: {e}")
+        logger.error(f"Fetch error: {str(e)}")
         return None
 
-# -----------------------------
-# Send message
-# -----------------------------
-async def send_message(bot, text, url=None):
-    try:
-        if url:
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔗 رابط الحجز", url=url)]
-            ])
-            await bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="HTML")
-
-        logger.info("Message sent")
-
-    except TelegramError as e:
-        logger.error(f"Telegram Error: {e}")
-
-# -----------------------------
-# Extract land info
-# -----------------------------
 def extract_lands(data):
     lands = {}
-
     try:
-        items = data.get("data", [])
+        items = data.get("data", []) or data.get("items", [])
+
         for land in items:
-            land_id = land.get("id")
-            lands[str(land_id)] = {
+            land_id = str(land.get("id"))
+            lands[land_id] = {
                 "id": land_id,
-                "number": land.get("landNumber") or land_id,
-                "area": land.get("area"),
-                "status": land.get("status", "متاحة"),
-                "url": f"https://sakani.sa/app/tax-incurred-form?id={land_id}"
+                "number": land.get("plotNumber", "غير معروف"),
+                "area": land.get("area", "غير محدد"),
+                "location": land.get("city", "غير معروف"),
+                "url": f"https://sakani.sa/app/tax-incurred-form?id={land_id}",
             }
         return lands
-
-    except Exception as e:
-        logger.error(f"Extract error: {e}")
+    except:
         return {}
 
-# -----------------------------
-# Monitor changes
-# -----------------------------
-async def check_updates(bot):
+async def send_alert(bot, land, msg_type):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 عرض القطعة", url=land["url"])],
+        [InlineKeyboardButton("🟢 حجز القطعة", url=land["url"])]
+    ])
+
+    message = (
+        f"🔔 <b>{msg_type}</b>\n\n"
+        f"رقم القطعة: {land['number']}\n"
+        f"المساحة: {land['area']}\n"
+        f"الموقع: {land['location']}\n\n"
+        f"<a href='{land['url']}'>رابط القطعة</a>\n"
+        f"⏱ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+
+    try:
+        await bot.send_message(
+            chat_id=CHAT_ID,
+            text=message,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    except TelegramError as e:
+        logger.error(str(e))
+
+async def check(bot):
     global previous_lands
 
-    data = await fetch_lands_data()
+    data = await fetch_lands()
     if not data:
-        logger.info("No data (Sakani down). Retrying...")
         return
 
     lands = extract_lands(data)
 
-    # أول تشغيل فقط
     if not previous_lands:
         previous_lands = lands
-        await send_message(bot, f"✨ تم تشغيل البوت\nعدد الأراضي: {len(lands)}")
         return
 
-    # أراضي جديدة
+    # قطع جديدة
     new_ids = set(lands.keys()) - set(previous_lands.keys())
     for land_id in new_ids:
-        land = lands[land_id]
-        msg = (
-            f"🌟 أرض جديدة ظهرت!\n\n"
-            f"رقم القطعة: {land['number']}\n"
-            f"المساحة: {land['area']}\n"
-            f"الحالة: {land['status']}\n\n"
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        await send_message(bot, msg, url=land["url"])
+        await send_alert(bot, lands[land_id], "ظهرت قطعة جديدة")
 
-    # أراضي ألغيت
+    # قطع ألغيت
     removed_ids = set(previous_lands.keys()) - set(lands.keys())
     for land_id in removed_ids:
-        land = previous_lands[land_id]
-        msg = (
-            f"❌ قطعة ملغاة!\n\n"
-            f"رقم القطعة: {land['number']}\n"
-            f"المساحة: {land['area']}\n"
-            f"تم حذفها من النظام.\n\n"
-            f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        await send_message(bot, msg)
+        await send_alert(bot, previous_lands[land_id], "❌ قطعة ألغيت")
 
     previous_lands = lands
 
-
-# -----------------------------
-# MAIN LOOP
-# -----------------------------
 async def main():
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
-
+    bot = Bot(TELEGRAM_BOT_TOKEN)
+    
     try:
-        info = await bot.get_me()
-        logger.info(f"Bot connected → @{info.username}")
-    except Exception as e:
-        logger.error(f"Token incorrect → {e}")
+        me = await bot.get_me()
+        logger.info(f"Bot started: @{me.username}")
+    except:
+        logger.error("❌ التوكن غير صحيح")
         return
 
     while True:
-        await check_updates(bot)
+        await check(bot)
         await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
