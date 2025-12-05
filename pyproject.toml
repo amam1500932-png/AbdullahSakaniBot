@@ -10,5 +10,4 @@ dependencies = [
     "flask>=3.1.2",
     "requests",
     "python-telegram-bot==13.15",
-    "aiohttp",
 ]
