@@ -46,12 +46,13 @@ def fetch_lands_data():
     """يجلب بيانات الأراضي من API سكني"""
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                          "AppleWebKit/537.36 (KHTML, like Gecko) "
-                          "Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "ar",
-        }
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+    "Origin": "https://sakani.sa",
+    "Referer": "https://sakani.sa/",
+    "Connection": "keep-alive"
+}
 
         resp = requests.get(SAKANI_API_URL, headers=headers, timeout=30)
 
