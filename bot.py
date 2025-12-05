@@ -15,7 +15,7 @@ import logging
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
-SAKANI_API_URL = “https://sakani.sa/api/web/lands/tax-incurred”
+SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
 CHECK_INTERVAL = 300  # 5 دقائق
 
 # ================== إعداد السجلات ==================
