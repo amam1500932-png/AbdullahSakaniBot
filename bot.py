@@ -35,17 +35,15 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 def fetch_lands_data():
     """يحمل البيانات من API سكني"""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
-            "Origin": "https://sakani.sa",
-            "Referer": "https://sakani.sa/",
-            "Connection": "keep-alive",
-
-            # 🔥 كوكي موقت شغال لأغراض الاختبار
-            "Cookie": "sakani_locale=ar; visid_incap_2266985=AAAABBBBBCCCCDDDDEEEEFFFF; incap_ses_1549_2266985=GGGGHHHHIIIIJJJJKKKKLLLL;"
-        }
+       headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+    "Origin": "https://sakani.sa",
+    "Referer": "https://sakani.sa/",
+    "Connection": "keep-alive",
+    "Cookie": "sakani_locale=ar; visid_incap_2266985=ZQyXJb4tQ2mHkW9c3z4Jx1; incap_ses_1549_2266985=H7JqP1b0Ylm9aA8Tf2kRcD;"
+}
 
         resp = requests.get(SAKANI_API_URL, headers=headers, timeout=30)
 
