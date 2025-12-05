@@ -1,99 +1,130 @@
-import asyncio
-import aiohttp
 import os
-from datetime import datetime
-from telegram import Bot
-from telegram.error import TelegramError
-import logging
-from bs4 import BeautifulSoup
+import time
+import requests
+from flask import Flask
+from threading import Thread
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+# =========================
+# المتغيرات السرية
+# =========================
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-SAKANI_URL = "https://sakani.sa/app/tax-incurred-form"
-CHECK_INTERVAL = 300
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+SAKANI_API = "https://sakani.sa/api/web/lands/tax-incurred"
 
-previous_lands = set()
+previous_status = {}
 
-async def fetch_lands():
+# =========================
+# إرسال رسالة تلجرام
+# =========================
+def send(msg):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(SAKANI_URL, headers=headers, timeout=30) as response:
-                if response.status == 200:
-                    return await response.text()
-                logger.error(f"Status: {response.status}")
-                return None
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+    except:
+        pass
+
+
+# =========================
+# رابط قطعة — زر جاهز
+# =========================
+def land_link(land_id):
+    return f"https://sakani.sa/app/units/{land_id}"
+
+# =========================
+# رابط مخطط — زر جاهز
+# =========================
+def project_link(project_id):
+    return f"https://sakani.sa/app/land-projects/{project_id}"
+
+
+# =========================
+# جلب بيانات سكني
+# =========================
+def get_sakani():
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        }
+        r = requests.get(SAKANI_API, headers=headers, timeout=10)
+
+        if r.status_code == 403:
+            print("❌ سكني فعل حماية 403 — نعطي مهلة")
+            time.sleep(5)
+            return None
+
+        return r.json()
+
     except Exception as e:
-        logger.error(f"Fetch error: {str(e)}")
+        print("⚠ خطأ في الاتصال:", e)
         return None
 
-async def send_message(bot, message):
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode='HTML')
-        logger.info("Message sent")
-    except TelegramError as e:
-        logger.error(f"Telegram error: {str(e)}")
 
-def extract_lands(html):
-    try:
-        soup = BeautifulSoup(html, 'html.parser')
-        lands = set()
-        for item in soup.find_all('div', class_=['land-item', 'property-item']):
-            land_id = item.get('data-id') or item.get('id')
-            if land_id:
-                lands.add(land_id)
-        return lands
-    except Exception as e:
-        logger.error(f"Parse error: {str(e)}")
-        return set()
+# =========================
+# مقارنة التغييرات
+# =========================
+def check_updates():
+    global previous_status
 
-async def check_changes(bot):
-    global previous_lands
-    logger.info("Checking...")
-    html = await fetch_lands()
-    if not html:
+    data = get_sakani()
+    if not data:
+        print("⚠ لا يوجد رد من سكني")
         return
-    current_lands = extract_lands(html)
-    if not current_lands:
-        logger.warning("No lands found")
-        return
-    if not previous_lands:
-        previous_lands = current_lands
-        await send_message(bot, f"Bot started! Monitoring {len(current_lands)} lands. Check interval: {CHECK_INTERVAL//60} min")
-        return
-    new = current_lands - previous_lands
-    removed = previous_lands - current_lands
-    for land_id in new:
-        await send_message(bot, f"New land detected! ID: {land_id}\n{SAKANI_URL}\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        await asyncio.sleep(1)
-    for land_id in removed:
-        await send_message(bot, f"Land removed! ID: {land_id}\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        await asyncio.sleep(1)
-    previous_lands = current_lands
-    if new or removed:
-        logger.info(f"New: {len(new)}, Removed: {len(removed)}")
 
-async def main():
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
-    logger.info("Starting...")
-    try:
-        info = await bot.get_me()
-        logger.info(f"Connected: @{info.username}")
-    except Exception as e:
-        logger.error(f"Token error: {str(e)}")
-        return
+    lands = data.get("data", [])
+
+    for item in lands:
+        land_id = item.get("id")
+        project_name = item.get("projectName")
+        project_id = item.get("projectId")
+        status = item.get("unitStatusName")
+
+        if land_id not in previous_status:  
+            previous_status[land_id] = status
+            continue
+
+        old = previous_status[land_id]
+        if old != status:
+            msg = (
+                f"🔔 *تغيير جديد في قطعة*\n"
+                f"🔹 رقم القطعة: {land_id}\n"
+                f"🔹 المخطط: {project_name}\n"
+                f"🔹 الحالة القديمة: {old}\n"
+                f"🔹 الحالة الجديدة: {status}\n"
+                f"📍 رابط القطعة:\n{land_link(land_id)}\n"
+                f"📍 رابط المخطط:\n{project_link(project_id)}"
+            )
+            send(msg)
+
+        previous_status[land_id] = status
+
+
+# =========================
+# لوب التشغيل
+# =========================
+def worker():
+    time.sleep(4)
+    send("✅ البوت يعمل الآن بنجاح!")
+
     while True:
-        try:
-            await check_changes(bot)
-        except Exception as e:
-            logger.error(f"Error: {str(e)}")
-        await asyncio.sleep(CHECK_INTERVAL)
+        check_updates()
+        time.sleep(40)  # كل 40 ثانية
 
+
+# =========================
+# Flask لـ Render
+# =========================
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Sakani Bot Running Successfully"
+
+
+# =========================
+# تشغيل الخادم
+# =========================
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Stopped")
+    Thread(target=worker).start()
+    app.run(host="0.0.0.0", port=10000)
