@@ -1,13 +1,7 @@
 services:
   - type: web
-    name: sakani-bot
+    name: AbdullahSakaniBot
     env: python
-    region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
-    envVars:
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: CHAT_ID
-        sync: false
+    buildCommand: ""
+    startCommand: "python3 main.py"
