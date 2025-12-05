@@ -51,7 +51,8 @@ def fetch_lands_data():
     "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
     "Origin": "https://sakani.sa",
     "Referer": "https://sakani.sa/",
-    "Connection": "keep-alive"
+    "Connection": "keep-alive",
+    "Cookie": "sakani_locale=ar; visid_incap_2266985=; incap_ses_1549_2266985=;"
 }
 
         resp = requests.get(SAKANI_API_URL, headers=headers, timeout=30)
