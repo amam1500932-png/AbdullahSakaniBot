@@ -1,13 +1,1 @@
-[project]
-name = "sakani-bot"
-version = "1.0.0"
-description = "Sakani land alert bot"
-authors = ["Abdullah <you@example.com>"]
-
 requires-python = ">=3.10"
-
-dependencies = [
-    "flask>=3.1.2",
-    "requests",
-    "python-telegram-bot==13.15",
-]
