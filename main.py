@@ -7,8 +7,8 @@ from telegram.error import TelegramError
 import logging
 from bs4 import BeautifulSoup
 
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHAT_ID = os.environ.get('CHAT_ID')
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 SAKANI_URL = "https://sakani.sa/app/tax-incurred-form"
 CHECK_INTERVAL = 300
 
