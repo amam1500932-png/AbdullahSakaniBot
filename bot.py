@@ -12,7 +12,7 @@ from telegram.error import TelegramError
 # =========================
 
 # من Environment في Render:
-TELEGRAM_BOT_TOKEN = os.environ.get("TELE_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
