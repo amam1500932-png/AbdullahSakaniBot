@@ -152,4 +152,58 @@ def check_for_changes_loop():
 
             data = fetch_lands_data()
             if not data:
-                logger.warning("لا توجد بيانات​​​​​​​​​​​​​​​​
+                logger.warning("لا توجد بيانات مسترجعة من سكني.")
+                continue
+
+            current_lands = extract_lands_info(data)
+            if not current_lands:
+                logger.warning("فشل في تحليل بيانات الأراضي.")
+                continue
+
+            # الجديد
+            new_ids = set(current_lands.keys()) - set(previous_lands.keys())
+
+            # المحذوف
+            removed_ids = set(previous_lands.keys()) - set(current_lands.keys())
+
+            # إرسال الجديد
+            for land_id in new_ids:
+                land = current_lands[land_id]
+                send_telegram_message(format_new_land_msg(land))
+                time.sleep(1)
+
+            # إرسال المحذوف
+            for land_id in removed_ids:
+                land = previous_lands[land_id]
+                send_telegram_message(format_removed_land_msg(land))
+                time.sleep(1)
+
+            previous_lands = current_lands
+
+        except Exception as e:
+            logger.error(f"خطأ في حلقة المراقبة: {e}")
+
+
+# =======================
+# واجهة Render
+# =======================
+
+@app.route("/")
+def index():
+    return "Abdullah Sakani Bot is running ✔️"
+
+
+# =======================
+# تشغيل البوت
+# =======================
+
+def main():
+    watcher_thread = threading.Thread(target=check_for_changes_loop, daemon=True)
+    watcher_thread.start()
+
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
