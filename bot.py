@@ -6,29 +6,32 @@ import json
 import os
 from flask import Flask
 
-# =========================
+# ============================
 # إعدادات رئيسية
-# =========================
+# ============================
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")  # من Render
-CHAT_ID = os.environ.get("CHAT_ID")               # معرف المحادثة
-CHECK_INTERVAL = 60  # كل دقيقة يفحص
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
+CHECK_INTERVAL = 30  # كل 30 ثانية
+
+# رابط API سكني (نستخدمه لاحقاً عندما نضيف الكوكي الحقيقي)
 SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
 
-# وضع التجربة (شغال الآن)
-# إذا صار عندك لابتوب والكوكي الجاهز: غيّرها إلى False
+# وضع التجربة = True
+# إذا صار عندك لابتوب بنخليه False ونضيف الكوكي الحقيقي
 USE_TEST_DATA = True
 
-# =========================
+
+# ============================
 # إنشاء البوت
-# =========================
+# ============================
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# =========================
-# بيانات محفوظة
-# =========================
+# ============================
+# الملفات المحفوظة
+# ============================
 
 STATE_FILE = "state.json"
 
@@ -48,16 +51,16 @@ def save_state(state):
 state = load_state()
 
 
-# =========================
-# جلب بيانات سكني
-# =========================
+# ============================
+# جلب بيانات الأراضي
+# ============================
 
 def fetch_lands_data():
-    """دالة تجيب بيانات الأراضي (تجريبية أو من سكني)"""
+    """ترجع بيانات الأراضي — تجريبية أو من سكني"""
 
     # ---- وضع التجربة ----
     if USE_TEST_DATA:
-        print("🔵 وضع التجربة شغال — استخدام بيانات تجريبية")
+        print("🔵 وضع التجربة فعال — استخدام بيانات تجريبية")
         fake_data = {
             "data": [
                 {
@@ -71,24 +74,23 @@ def fetch_lands_data():
                 },
                 {
                     "id": 2,
-                    "landNumber": "1002",
+                    "landNumber": "2005",
                     "projectName": "مخطط تجريبي 2",
                     "cityName": "جدة",
                     "area": "500 م²",
-                    "statusName": "متاحة",
+                    "statusName": "ملغاة",
                     "projectId": 222
                 }
             ]
         }
         return fake_data
 
-    # ---- وضع حقيقي (لاحقًا نضيف الكوكي هنا) ----
+    # ---- وضع حقيقي لاحقاً ----
     try:
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json",
-            "Referer": "https://sakani.sa/"
-            # "Cookie": "ضع الكوكي هنا بعد ما نجيبه من اللابتوب"
+            "Referer": "https://sakani.sa/",
         }
 
         resp = requests.get(SAKANI_API_URL, headers=headers, timeout=20)
@@ -98,84 +100,94 @@ def fetch_lands_data():
         else:
             print(f"❌ خطأ API: {resp.status_code}")
             return None
+
     except Exception as e:
         print(f"❌ استثناء أثناء الجلب: {e}")
         return None
 
 
-# =========================
-# مقارنة البيانات القديمة بالجديدة
-# =========================
+# ============================
+# تهيئة رسالة الإشعار
+# ============================
 
-def check_changes():
+def format_land(land):
+    return (
+        f"📍 <b>قطعة:</b> {land['landNumber']}\n"
+        f"🏘️ <b>المخطط:</b> {land['projectName']}\n"
+        f"📌 <b>المدينة:</b> {land['cityName']}\n"
+        f"📐 <b>المساحة:</b> {land['area']}\n"
+        f"📊 <b>الحالة:</b> {land['statusName']}\n"
+    )
+
+def send(msg):
+    if CHAT_ID:
+        bot.send_message(CHAT_ID, msg)
+
+
+# ============================
+# حلقة مراقبة التغييرات
+# ============================
+
+def watcher():
     global state
 
-    lands_data = fetch_lands_data()
-    if lands_data is None or "data" not in lands_data:
-        print("⚠️ لم يتم استلام بيانات")
-        return
+    print("🚀 المراقبة بدأت…")
 
-    new_list = lands_data["data"]
-    old_list = state.get("lands", {})
-
-    # البحث عن أراضي جديدة
-    for item in new_list:
-        land_id = str(item["id"])
-
-        if land_id not in old_list:
-            send_land_notification(item)
-            old_list[land_id] = item
-
-    save_state(state)
-
-
-# =========================
-# إرسال إشعار تلجرام
-# =========================
-
-def send_land_notification(item):
-    msg = (
-        f"🔔 <b>قطعة جديدة متاحة</b>\n"
-        f"📌 <b>رقم القطعة:</b> {item['landNumber']}\n"
-        f"🏘 <b>المخطط:</b> {item['projectName']}\n"
-        f"🏙 <b>المدينة:</b> {item['cityName']}\n"
-        f"📐 <b>المساحة:</b> {item['area']}\n"
-        f"🔗 <a href='https://sakani.sa/app/land-projects/{item['projectId']}'>رابط المخطط</a>"
-    )
-    bot.send_message(CHAT_ID, msg)
-
-
-# =========================
-# حلقة الفحص المتكرر
-# =========================
-
-def background_loop():
     while True:
-        check_changes()
+        data = fetch_lands_data()
+
+        if not data or "data" not in data:
+            time.sleep(CHECK_INTERVAL)
+            continue
+
+        current = {str(l["id"]): l for l in data["data"]}
+        previous = state["lands"]
+
+        # الجديد
+        new_ids = set(current.keys()) - set(previous.keys())
+
+        # المحذوف
+        removed_ids = set(previous.keys()) - set(current.keys())
+
+        # إرسال الجديد
+        for land_id in new_ids:
+            msg = "🟢 <b>قطعة جديدة ظهرت!</b>\n\n" + format_land(current[land_id])
+            send(msg)
+
+        # إرسال المحذوف
+        for land_id in removed_ids:
+            msg = "🔴 <b>قطعة اختفت / ألغيت!</b>\n\n" + format_land(previous[land_id])
+            send(msg)
+
+        # حفظ الحالة
+        state["lands"] = current
+        save_state(state)
+
         time.sleep(CHECK_INTERVAL)
 
 
-# =========================
-# تشغيل Flask عشان Render يبقي السيرفر شغال
-# =========================
+# ============================
+# تشغيل Flask (لـ Render)
+# ============================
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Sakani bot is running."
+    return "Sakani Bot Running ✔️"
 
 
-# =========================
-# تشغيل الخيوط
-# =========================
+# ============================
+# بدء التشغيل
+# ============================
 
-threading.Thread(target=background_loop, daemon=True).start()
+def main():
+    t = threading.Thread(target=watcher, daemon=True)
+    t.start()
 
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
-# =========================
-# تشغيل ويب Render
-# =========================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    main()
