@@ -1,258 +1,181 @@
-import os
 import time
 import threading
-import logging
 import requests
-from flask import Flask
-from telegram import Bot
-from telegram.error import TelegramError
-from bs4 import BeautifulSoup
+import telebot
 import json
+import os
+from flask import Flask
 
-# =======================
-# الإعدادات
-# =======================
+# =========================
+# إعدادات رئيسية
+# =========================
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")  # من Render
+CHAT_ID = os.environ.get("CHAT_ID")               # معرف المحادثة
+CHECK_INTERVAL = 60  # كل دقيقة يفحص
 
-# استخدام صفحة الويب بدلاً من API
-SAKANI_WEB_URL = "https://sakani.sa/Individuals/LandWithFees"
-CHECK_INTERVAL = 300  # كل 5 دقائق
+SAKANI_API_URL = "https://sakani.sa/api/web/lands/tax-incurred"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# وضع التجربة (شغال الآن)
+# إذا صار عندك لابتوب والكوكي الجاهز: غيّرها إلى False
+USE_TEST_DATA = True
 
-previous_lands = {}
+# =========================
+# إنشاء البوت
+# =========================
 
-app = Flask(__name__)
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# =======================
-# جلب بيانات سكني من صفحة الويب
-# =======================
+# =========================
+# بيانات محفوظة
+# =========================
+
+STATE_FILE = "state.json"
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {"lands": {}}
+    return {"lands": {}}
+
+def save_state(state):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+state = load_state()
+
+
+# =========================
+# جلب بيانات سكني
+# =========================
 
 def fetch_lands_data():
-    """جلب بيانات الأراضي من صفحة الويب"""
+    """دالة تجيب بيانات الأراضي (تجريبية أو من سكني)"""
+
+    # ---- وضع التجربة ----
+    if USE_TEST_DATA:
+        print("🔵 وضع التجربة شغال — استخدام بيانات تجريبية")
+        fake_data = {
+            "data": [
+                {
+                    "id": 1,
+                    "landNumber": "1001",
+                    "projectName": "مخطط تجريبي 1",
+                    "cityName": "الرياض",
+                    "area": "400 م²",
+                    "statusName": "متاحة",
+                    "projectId": 111
+                },
+                {
+                    "id": 2,
+                    "landNumber": "1002",
+                    "projectName": "مخطط تجريبي 2",
+                    "cityName": "جدة",
+                    "area": "500 م²",
+                    "statusName": "متاحة",
+                    "projectId": 222
+                }
+            ]
+        }
+        return fake_data
+
+    # ---- وضع حقيقي (لاحقًا نضيف الكوكي هنا) ----
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "ar-SA,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Cache-Control": "max-age=0"
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Referer": "https://sakani.sa/"
+            # "Cookie": "ضع الكوكي هنا بعد ما نجيبه من اللابتوب"
         }
 
-        session = requests.Session()
-        
-        # زيارة الصفحة الرئيسية أولاً
-        logger.info("زيارة الصفحة الرئيسية...")
-        session.get("https://sakani.sa/", headers=headers, timeout=15)
-        time.sleep(2)
-        
-        # زيارة صفحة الأراضي
-        logger.info("جلب بيانات الأراضي...")
-        resp = session.get(SAKANI_WEB_URL, headers=headers, timeout=30)
+        resp = requests.get(SAKANI_API_URL, headers=headers, timeout=20)
 
         if resp.status_code == 200:
-            logger.info("✅ تم جلب الصفحة بنجاح")
-            
-            # محاولة استخراج البيانات من الصفحة
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            
-            # البحث عن script tags التي قد تحتوي على البيانات
-            scripts = soup.find_all('script')
-            for script in scripts:
-                if script.string and 'lands' in script.string.lower():
-                    try:
-                        # محاولة استخراج JSON من السكريبت
-                        script_content = script.string
-                        # يمكن تحسين هذا حسب بنية الصفحة
-                        logger.info(f"وجدت سكريبت يحتوي على 'lands'")
-                    except:
-                        pass
-            
-            # في حالة عدم وجود بيانات في السكريبت، نرجع رسالة
-            logger.warning("لم يتم العثور على بيانات مباشرة - قد تحتاج المراقبة اليدوية")
-            
-            # إرجاع بيانات وهمية للاختبار (ستحتاج لتعديل هذا حسب بنية الصفحة الفعلية)
-            return {"data": []}
-            
+            return resp.json()
         else:
-            logger.error(f"❌ خطأ في استجابة الصفحة: {resp.status_code}")
+            print(f"❌ خطأ API: {resp.status_code}")
             return None
-
     except Exception as e:
-        logger.error(f"⚠️ خطأ أثناء جلب البيانات: {e}")
+        print(f"❌ استثناء أثناء الجلب: {e}")
         return None
 
 
-# =======================
-# تحليل البيانات
-# =======================
+# =========================
+# مقارنة البيانات القديمة بالجديدة
+# =========================
 
-def extract_lands_info(data):
-    """يبسط بيانات ويعيدها بشكل منظم"""
-    lands = {}
-    try:
-        if not data or "data" not in data:
-            return {}
-        
-        data_list = data.get("data", [])
-        
-        for land in data_list:
-            land_id = str(land.get("id", ""))
-            
-            if not land_id:
-                continue
+def check_changes():
+    global state
 
-            lands[land_id] = {
-                "number": land.get("landNumber") or land.get("plotNumber") or land_id,
-                "project": land.get("projectName") or "غير محدد",
-                "city": land.get("cityName") or land.get("city") or "غير محدد",
-                "area": str(land.get("area") or land.get("size") or "غير محدد"),
-                "status": land.get("statusName") or land.get("status") or "غير محدد",
-                "url": f"https://sakani.sa/app/land-projects/{land.get('projectId', '')}"
-            }
+    lands_data = fetch_lands_data()
+    if lands_data is None or "data" not in lands_data:
+        print("⚠️ لم يتم استلام بيانات")
+        return
 
-        logger.info(f"📊 تم تحليل {len(lands)} قطعة أرض")
-        return lands
+    new_list = lands_data["data"]
+    old_list = state.get("lands", {})
 
-    except Exception as e:
-        logger.error(f"خطأ في تحليل بيانات الأراضي: {e}")
-        return {}
+    # البحث عن أراضي جديدة
+    for item in new_list:
+        land_id = str(item["id"])
+
+        if land_id not in old_list:
+            send_land_notification(item)
+            old_list[land_id] = item
+
+    save_state(state)
 
 
-# =======================
-# إرسال رسائل تلجرام
-# =======================
+# =========================
+# إرسال إشعار تلجرام
+# =========================
 
-def send_telegram_message(message: str):
-    try:
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=message,
-            parse_mode="HTML",
-            disable_web_page_preview=False,
-        )
-        logger.info("📤 تم إرسال رسالة إلى تلجرام")
-    except TelegramError as e:
-        logger.error(f"❌ خطأ أثناء إرسال رسالة تلجرام: {e}")
-
-
-def format_new_land_msg(land):
-    return (
-        "<b>🟢 قطعة جديدة ظهرت في سكني</b>\n\n"
-        f"🏘️ <b>المخطط:</b> {land['project']}\n"
-        f"📍 <b>المدينة:</b> {land['city']}\n"
-        f"🔢 <b>رقم القطعة:</b> {land['number']}\n"
-        f"📏 <b>المساحة:</b> {land['area']}\n"
-        f"🔗 <a href='{land['url']}'>رابط العرض</a>"
+def send_land_notification(item):
+    msg = (
+        f"🔔 <b>قطعة جديدة متاحة</b>\n"
+        f"📌 <b>رقم القطعة:</b> {item['landNumber']}\n"
+        f"🏘 <b>المخطط:</b> {item['projectName']}\n"
+        f"🏙 <b>المدينة:</b> {item['cityName']}\n"
+        f"📐 <b>المساحة:</b> {item['area']}\n"
+        f"🔗 <a href='https://sakani.sa/app/land-projects/{item['projectId']}'>رابط المخطط</a>"
     )
+    bot.send_message(CHAT_ID, msg)
 
 
-def format_removed_land_msg(land):
-    return (
-        "<b>🔴 قطعة تم إزالتها / اختفت من النظام</b>\n\n"
-        f"🏘️ <b>المخطط:</b> {land['project']}\n"
-        f"📍 <b>المدينة:</b> {land['city']}\n"
-        f"🔢 <b>رقم القطعة:</b> {land['number']}\n"
-        f"📏 <b>المساحة:</b> {land['area']}\n"
-        "❗ تم إزالتها من النظام (قد تكون محجوزة أو مباعة)."
-    )
+# =========================
+# حلقة الفحص المتكرر
+# =========================
 
-
-# =======================
-# حلقة المراقبة
-# =======================
-
-def check_for_changes_loop():
-    global previous_lands
-
-    logger.info("🚀 بدء عملية فحص سكني...")
-    
-    send_telegram_message(
-        "🔔 تم تشغيل بوت مراقبة سكني\n\n"
-        "⚠️ ملاحظة: قد تكون المراقبة محدودة بسبب قيود الموقع.\n"
-        "سيتم المحاولة كل 5 دقائق."
-    )
-
-    # حلقة مستمرة
+def background_loop():
     while True:
-        try:
-            data = fetch_lands_data()
-            
-            if data:
-                current_lands = extract_lands_info(data)
-                
-                if current_lands and previous_lands:
-                    # الجديد
-                    new_ids = set(current_lands.keys()) - set(previous_lands.keys())
-                    # المحذوف
-                    removed_ids = set(previous_lands.keys()) - set(current_lands.keys())
-
-                    # إرسال الجديد
-                    if new_ids:
-                        logger.info(f"🆕 تم اكتشاف {len(new_ids)} قطعة جديدة")
-                        for land_id in new_ids:
-                            land = current_lands[land_id]
-                            send_telegram_message(format_new_land_msg(land))
-                            time.sleep(1)
-
-                    # إرسال المحذوف
-                    if removed_ids:
-                        logger.info(f"🗑️ تم اكتشاف {len(removed_ids)} قطعة محذوفة")
-                        for land_id in removed_ids:
-                            land = previous_lands[land_id]
-                            send_telegram_message(format_removed_land_msg(land))
-                            time.sleep(1)
-
-                    if not new_ids and not removed_ids:
-                        logger.info("✅ لا توجد تغييرات")
-
-                if current_lands:
-                    previous_lands = current_lands
-
-            time.sleep(CHECK_INTERVAL)
-
-        except Exception as e:
-            logger.error(f"❌ خطأ في حلقة المراقبة: {e}")
-            time.sleep(CHECK_INTERVAL)
+        check_changes()
+        time.sleep(CHECK_INTERVAL)
 
 
-# =======================
-# واجهة Render
-# =======================
+# =========================
+# تشغيل Flask عشان Render يبقي السيرفر شغال
+# =========================
+
+app = Flask(__name__)
 
 @app.route("/")
-def index():
-    return "Abdullah Sakani Bot is running ✔️"
+def home():
+    return "Sakani bot is running."
 
 
-@app.route("/health")
-def health():
-    return {"status": "ok", "lands_count": len(previous_lands)}
+# =========================
+# تشغيل الخيوط
+# =========================
+
+threading.Thread(target=background_loop, daemon=True).start()
 
 
-# =======================
-# تشغيل البوت
-# =======================
-
-def main():
-    watcher_thread = threading.Thread(target=check_for_changes_loop, daemon=True)
-    watcher_thread.start()
-
-    port = int(os.environ.get("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
-
+# =========================
+# تشغيل ويب Render
+# =========================
 
 if __name__ == "__main__":
-    main()
+    app.run(host="0.0.0.0", port=10000)
