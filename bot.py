@@ -2,15 +2,14 @@ import requests
 import telebot
 import time
 import re
-from bs4 import BeautifulSoup
 from flask import Flask
 from threading import Thread
 import os
 
-# خادم الويب لإبقاء البوت حياً على Render
+# خادم الويب لإبقاء البوت حياً
 app = Flask('')
 @app.route('/')
-def home(): return "Bot is Active"
+def home(): return "Radar is Online"
 
 def run():
     port = int(os.environ.get("PORT", 8080))
@@ -24,41 +23,39 @@ bot = telebot.TeleBot(API_TOKEN)
 URL_SAKANI = "https://sakani.sa/app/land-projects/584"
 last_known_count = None
 
-def check_sakani_silent():
+def check_sakani_ultra_fast():
     global last_known_count
-    # استخدام جسر جوجل للوصول للبيانات المخفية
-    search_url = f"https://www.google.com/search?q=site:sakani.sa+{URL_SAKANI}"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    # استخدام جسر AllOrigins للوصول للبيانات اللحظية وتجاوز حظر Render
+    bridge_url = f"https://api.allorigins.win/get?url={URL_SAKANI}"
 
     try:
-        response = requests.get(search_url, headers=headers, timeout=30)
+        response = requests.get(bridge_url, timeout=20)
         if response.status_code == 200:
-            # استخراج أرقام القطع والروابط من محتوى البحث
-            current_found = re.findall(r'unit/\d+|land-projects/\d+/\d+', response.text)
-            current_count = len(set(current_found))
+            content = response.json().get('contents', '')
+            # البحث عن أي أرقام تدل على الوحدات في الكود المصدري
+            found_units = re.findall(r'unit_id":(\d+)|"id":(\d+)|"land_number":"(.*?)"', content)
+            current_count = len(set(found_units))
 
-            # أول تشغيل للبوت: يخزن العدد فقط دون إرسال رسالة
             if last_known_count is None:
                 last_known_count = current_count
-                print(f"تم بدء المراقبة الصامتة. العدد الحالي: {current_count}")
+                print(f"تم بدء الرادار السريع. العدد الحالي: {current_count}")
                 return
 
-            # إرسال تنبيه فقط عند حدوث تغيير حقيقي
-            if current_count > last_known_count:
-                bot.send_message(CHAT_ID, f"✨ **عاجل: قطعة أرض توفرت الآن!**\nالعدد زاد من {last_known_count} إلى {current_count}\n🔗 افحص الرابط فوراً:\n{URL_SAKANI}")
+            # رصد أي تغيير في العدد
+            if current_count != last_known_count:
+                if current_count > last_known_count:
+                    bot.send_message(CHAT_ID, f"✨ **عاجل: قطعة أرض توفرت الآن!**\nالعدد زاد إلى: {current_count}\n🔗 {URL_SAKANI}")
+                else:
+                    bot.send_message(CHAT_ID, f"🚫 **تم حجز قطعة أرض.**\nالعدد الحالي: {current_count}")
                 last_known_count = current_count
-            elif current_count < last_known_count:
-                bot.send_message(CHAT_ID, f"🚫 **تم حجز قطعة أرض.**\nالعدد نقص من {last_known_count} إلى {current_count}")
-                last_known_count = current_count
-
     except Exception as e:
-        print(f"خطأ في الفحص الصامت: {e}")
+        print(f"Error: {e}")
 
 def bot_loop():
-    bot.send_message(CHAT_ID, "🔕 تم تفعيل المراقبة الصامتة للمخطط 584.\nسأرسل تنبيهاً فقط عند توفر أرض أو حجزها.")
+    bot.send_message(CHAT_ID, "⚡️ تم تفعيل الرادار السريع (فحص كل 30 ثانية).\nسأقوم الآن برصد حجزك الأخير.")
     while True:
-        check_sakani_silent()
-        time.sleep(120) # فحص كل دقيقتين
+        check_sakani_ultra_fast()
+        time.sleep(30) # فحص سريع جداً
 
 if __name__ == "__main__":
     Thread(target=run).start()
