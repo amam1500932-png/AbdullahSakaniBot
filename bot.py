@@ -5,76 +5,60 @@ import time
 from flask import Flask
 from threading import Thread
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 
-# --- 1. البيانات الخاصة ---
+# --- بياناتك ---
 TOKEN = "8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo"
 CHAT_ID = "652646153"
 URL_SAKANI = "https://sakani.sa/app/land-projects"
 
-# --- 2. سيرفر Flask لإبقاء البوت حياً ---
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "✅ البوت يعمل ومستقر الآن!"
+def home(): return "✅ البوت المطور يعمل!"
 
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- 3. إعداد البوت والرد الآلي ---
 bot = telebot.TeleBot(TOKEN)
 
-@bot.message_handler(commands=['start', 'test'])
-def send_welcome(message):
-    bot.reply_to(message, "🚀 أهلاً عبدالله! أنا الآن أعمل وأراقب أراضي سكني بدقة.\nسأرسل لك تفاصيل القطع فور توفرها.")
-
-# --- 4. ميزة مراقبة صفحة سكني واستخراج النصوص ---
+# --- دالة المراقبة الذكية للإلغاء ---
 def monitor_sakani():
-    print("بدأت عملية المراقبة...")
-    last_lands = set()
+    print("بدأ نظام رصد الإلغاء المبكر...")
+    # حفظ الحالة الأخيرة للنصوص والأرقام
+    last_state = ""
     
     while True:
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-            }
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             response = requests.get(URL_SAKANI, headers=headers, timeout=20)
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
-                current_lands = []
-                
-                # البحث عن أي نصوص داخل مربعات المشاريع
-                projects = soup.find_all(['h3', 'div', 'span'], class_=lambda x: x and ('card' in x or 'project' in x))
-                for p in projects:
-                    text = p.get_text(strip=True)
-                    if text: current_lands.append(text)
+                current_state = soup.get_text()
 
-                # تنبيه في حال وجود شيء جديد
-                for land in current_lands:
-                    if land not in last_lands and len(last_lands) > 0:
-                        msg = f"🆕 **تنبيه: تم رصد تحديث في سكني!**\n\n📍 **التفاصيل:**\n{land}\n\n🔗 **الرابط:** {URL_SAKANI}"
-                        bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
+                # إذا تغير محتوى الصفحة (نقص عدد المحجوز أو تغير نص)
+                if last_state != "" and current_state != last_state:
+                    now = datetime.now() + timedelta(hours=3) # توقيت السعودية
+                    target_time = now + timedelta(hours=2) # موعد النزول المتوقع
+                    
+                    msg = (f"⚠️ **رصد إلغاء محتمل!**\n\n"
+                           f"تغيرت بيانات المخططات الآن. إذا كان هذا إلغاءً لقطعة:\n"
+                           f"⏰ وقت الإلغاء: {now.strftime('%I:%M %p')}\n"
+                           f"🚀 **موعد النزول المتوقع:** {target_time.strftime('%I:%M %p')}\n\n"
+                           f"جهز نفسك للدخول بعد ساعتين!")
+                    
+                    bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
                 
-                last_lands = set(current_lands)
+                last_state = current_state
         except Exception as e:
-            print(f"خطأ فحص: {e}")
+            print(f"خطأ: {e}")
         
-        time.sleep(180) # فحص كل 3 دقائق
+        time.sleep(60) # فحص كل دقيقة لرصد اللحظة بدقة
 
-# --- 5. التشغيل النهائي وحل مشكلة التعارض ---
 if __name__ == "__main__":
-    # تشغيل السيرفر
     Thread(target=run).start()
-    
+    bot.remove_webhook()
     # تشغيل المراقبة
-    monitor_thread = Thread(target=monitor_sakani)
-    monitor_thread.start()
-    
-    # الحل السحري لمشكلة Conflict التي ظهرت في الصور
-    bot.remove_webhook() 
-    print("تم تنظيف الجلسات القديمة.. البوت يستمع الآن.")
-    
-    # بدء الاستماع للرسائل
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    Thread(target=monitor_sakani).start()
+    bot.infinity_polling()
