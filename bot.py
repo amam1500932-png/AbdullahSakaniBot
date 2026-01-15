@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- البيانات ---
 TOKEN = "8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo"
-CHAT_ID = "652646153"
+CHAT_ID = "-1003269925362"
 URL_SAKANI = "https://sakani.sa/app/land-projects"
 
 app = Flask('')
