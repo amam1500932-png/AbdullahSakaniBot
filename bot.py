@@ -5,40 +5,45 @@ import re
 import time
 import random
 
-# بيانات البوت
+# إعدادات البوت
 API_TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
 CHAT_ID = '-1003269925362'
 bot = telebot.TeleBot(API_TOKEN)
 
 URL_SAKANI = "https://sakani.sa/app/land-projects/584"
 
-# ذاكرة البوت لتخزين أرقام القطع
+# ذاكرة البوت للأراضي
 last_known_lands = set()
 
-def check_sakani_stable():
+def check_sakani_proxy():
     global last_known_lands
     
-    # قائمة بمتصفحات حقيقية ومتنوعة لتجاوز حظر 403
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    # سنستخدم وسيط خارجي (Free Proxy Bridge) لتغيير عنوان السيرفر
+    # هذه الطريقة تجعل سكني يرى طلبنا كأنه قادم من متصفح عادي وليس من Render
+    proxy_gateways = [
+        "https://api.allorigins.win/get?url=",
+        "https://thingproxy.freeboard.io/fetch/"
     ]
+    
+    selected_proxy = random.choice(proxy_gateways)
+    full_proxy_url = f"{selected_proxy}{URL_SAKANI}"
     
     scraper = cloudscraper.create_scraper()
     
     try:
-        # تأخير عشوائي لتبدو كإنسان
-        time.sleep(random.uniform(3, 7))
+        print(f"محاولة الدخول عبر الوسيط: {selected_proxy}")
+        response = scraper.get(full_proxy_url, timeout=30)
         
-        headers = {'User-Agent': random.choice(user_agents)}
-        response = scraper.get(URL_SAKANI, headers=headers, timeout=30)
-        
+        # إذا كان الرد ناجحاً (كود 200)
         if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            all_links = soup.find_all('a', href=True)
+            # معالجة البيانات القادمة من الوسيط
+            content = response.text
+            soup = BeautifulSoup(content, 'html.parser')
             
+            # البحث عن الروابط والقطع
+            all_links = soup.find_all('a', href=True)
             current_lands = {}
+            
             for link in all_links:
                 href = link['href']
                 if '/units/' in href or '/land-projects/584/' in href:
@@ -49,28 +54,29 @@ def check_sakani_stable():
 
             current_set = set(current_lands.keys())
 
-            # المقارنة والرصد
-            if last_known_lands:
-                # أراضي جديدة (إلغاء حجز)
-                new_lands = current_set - last_known_lands
-                for land in new_lands:
-                    bot.send_message(CHAT_ID, f"✨ **أرض توفرت الآن (إلغاء حجز)!**\n🔢 رقم القطعة: {land}\n🔗 الرابط:\n{current_lands[land]}")
+            if last_known_lands and current_set != last_known_lands:
+                # رصد الإلغاء
+                new_ones = current_set - last_known_lands
+                for land in new_ones:
+                    bot.send_message(CHAT_ID, f"✨ **تم فك حظر أرض جديدة!**\n🔢 رقم القطعة: {land}\n🔗 الرابط المباشر:\n{current_lands[land]}")
                 
-                # أراضي اختفت (تم حجزها)
-                sold_lands = last_known_lands - current_set
-                for land in sold_lands:
+                # رصد الحجز
+                sold_ones = last_known_lands - current_set
+                for land in sold_ones:
                     bot.send_message(CHAT_ID, f"🚫 **تم حجز القطعة رقم: {land}**")
 
             last_known_lands = current_set
-            bot.send_message(CHAT_ID, f"✅ تم الفحص بنجاح.\n📊 المتاح حالياً: {len(current_set)} قطعة.")
+            bot.send_message(CHAT_ID, f"✅ تم تجاوز الحظر بنجاح.\n📊 المتاح حالياً: {len(current_set)} قطعة.")
             
         else:
-            print(f"خطأ {response.status_code}")
-            if response.status_code == 403:
-                bot.send_message(CHAT_ID, "⚠️ الموقع لا يزال يحظر السيرفر، سأحاول تغيير الهوية مجدداً.")
+            print(f"لا يزال هناك حظر، كود: {response.status_code}")
+            # إذا فشل البروكسي، سنحاول محاولة أخيرة مباشرة
+            direct_response = scraper.get(URL_SAKANI, timeout=20)
+            if direct_response.status_code == 200:
+                 bot.send_message(CHAT_ID, "✅ نجح الاتصال المباشر هذه المرة!")
 
     except Exception as e:
-        print(f"حدث خطأ: {e}")
+        print(f"خطأ: {e}")
 
 if __name__ == "__main__":
-    check_sakani_stable()
+    check_sakani_proxy()
