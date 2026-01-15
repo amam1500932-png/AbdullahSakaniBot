@@ -1,53 +1,58 @@
+import os
+import telebot
+from flask import Flask
+from threading import Thread
 import requests
 import time
-import hashlib
 
-# --- إعداداتك الخاصة (يجب تعبئتها) ---
+# --- 1. إعداد سيرفر Flask الصغير لإرضاء منصة Render ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "I am alive"
+
+def run():
+    # Render يعطي المنفذ تلقائياً في متغير البيئة PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- 2. إعدادات البوت ---
 TOKEN = "ضع_هنا_توكن_البوت"
 CHAT_ID = "ضع_هنا_ايدي_حسابك"
-# رابط صفحة الأراضي (يفضل الرابط بعد اختيار المدينة في المتصفح)
-URL_TO_MONITOR = "https://sakani.sa/app/land-projects"
+bot = telebot.TeleBot(TOKEN)
 
-def send_telegram_msg(text):
-    """وظيفة إرسال التنبيه إلى تلجرام"""
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
-    try:
-        requests.post(url, data=payload)
-    except Exception as e:
-        print(f"خطأ في إرسال الرسالة: {e}")
-
-def get_page_hash():
-    """وظيفة تجلب محتوى الصفحة وتحولها لرمز مشفر لمقارنة التغييرات"""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    response = requests.get(URL_TO_MONITOR, headers=headers)
-    if response.status_code == 200:
-        # نأخذ جزء من المحتوى لتقليل التنبيهات الخاطئة
-        return hashlib.md5(response.text.encode('utf-8')).hexdigest()
-    return None
-
-def main():
-    print("بدأ البوت في مراقبة أراضي سكني...")
-    send_telegram_msg("🚀 تم تشغيل بوت مراقبة الأراضي بنجاح!")
-    
-    last_hash = get_page_hash()
-    
+# --- 3. وظيفة مراقبة سكني ---
+def monitor_sakani():
+    url = "https://sakani.sa/app/land-projects"
+    last_content = ""
+    print("بدأ فحص موقع سكني...")
     while True:
         try:
-            time.sleep(300) # فحص كل 5 دقائق
-            current_hash = get_page_hash()
-            
-            if current_hash and current_hash != last_hash:
-                send_telegram_msg(f"⚠️ <b>تحديث جديد في سكني!</b>\nهناك تغيير في صفحة الأراضي، افحص الرابط الآن:\n{URL_TO_MONITOR}")
-                last_hash = current_hash
-            else:
-                print("لا يوجد تغيير...")
-                
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                # نتحقق من وجود تغيير في الصفحة
+                if response.text != last_content and last_content != "":
+                    bot.send_message(CHAT_ID, f"⚠️ تنبيه: حدث تغيير في أراضي سكني!\nالرابط: {url}")
+                last_content = response.text
         except Exception as e:
-            print(f"حدث خطأ: {e}")
-            time.sleep(60)
+            print(f"Error in monitor: {e}")
+        time.sleep(300) # فحص كل 5 دقائق
 
+# --- 4. تشغيل كل شيء ---
 if __name__ == "__main__":
-    main()
+    # تشغيل السيرفر الوهمي
+    keep_alive()
+    
+    # تشغيل خيط المراقبة
+    monitor_thread = Thread(target=monitor_sakani)
+    monitor_thread.start()
+    
+    # تشغيل استقبال أوامر تلجرام
+    print("البوت يعمل الآن...")
+    bot.polling(none_stop=True)
