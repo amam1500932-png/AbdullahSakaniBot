@@ -7,14 +7,14 @@ from threading import Thread
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
-# --- بياناتك ---
+# --- البيانات الخاصة ---
 TOKEN = "8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo"
 CHAT_ID = "652646153"
 URL_SAKANI = "https://sakani.sa/app/land-projects"
 
 app = Flask('')
 @app.route('/')
-def home(): return "✅ البوت المطور يعمل!"
+def home(): return "✅ نظام المراقبة المطور يعمل!"
 
 def run():
     port = int(os.environ.get("PORT", 8080))
@@ -22,11 +22,15 @@ def run():
 
 bot = telebot.TeleBot(TOKEN)
 
-# --- دالة المراقبة الذكية للإلغاء ---
+# دالة لإرسال تذكير بعد وقت محدد
+def schedule_reminder(wait_seconds, message_text):
+    time.sleep(wait_seconds)
+    bot.send_message(CHAT_ID, message_text, parse_mode='Markdown')
+
 def monitor_sakani():
-    print("بدأ نظام رصد الإلغاء المبكر...")
-    # حفظ الحالة الأخيرة للنصوص والأرقام
+    print("بدأ نظام الرصد المطور...")
     last_state = ""
+    last_ping_time = time.time()
     
     while True:
         try:
@@ -37,28 +41,38 @@ def monitor_sakani():
                 soup = BeautifulSoup(response.text, 'html.parser')
                 current_state = soup.get_text()
 
-                # إذا تغير محتوى الصفحة (نقص عدد المحجوز أو تغير نص)
+                # 1. رصد التغيير الفوري (إلغاء أو إضافة)
                 if last_state != "" and current_state != last_state:
                     now = datetime.now() + timedelta(hours=3) # توقيت السعودية
                     target_time = now + timedelta(hours=2) # موعد النزول المتوقع
+                    reminder_time = target_time - timedelta(minutes=10) # التذكير قبل بـ 10 دقائق
                     
-                    msg = (f"⚠️ **رصد إلغاء محتمل!**\n\n"
-                           f"تغيرت بيانات المخططات الآن. إذا كان هذا إلغاءً لقطعة:\n"
-                           f"⏰ وقت الإلغاء: {now.strftime('%I:%M %p')}\n"
-                           f"🚀 **موعد النزول المتوقع:** {target_time.strftime('%I:%M %p')}\n\n"
-                           f"جهز نفسك للدخول بعد ساعتين!")
-                    
+                    msg = (f"⚠️ **تنبيه: رصد تغيير/إلغاء الآن!**\n\n"
+                           f"⏰ وقت الرصد: {now.strftime('%I:%M %p')}\n"
+                           f"🚀 **موعد النزول المتوقع:** {target_time.strftime('%I:%M %p')}\n"
+                           f"🔔 سأقوم بتذكيرك قبل النزول بـ 10 دقائق.")
                     bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
-                
+                    
+                    # جدولة التذكير قبل النزول بـ 10 دقائق في خيط منفصل
+                    seconds_to_reminder = (reminder_time - now).total_seconds()
+                    if seconds_to_reminder > 0:
+                        rem_msg = f"⏰ **تذكير يا عبدالله!**\nبقي 10 دقائق على موعد النزول المتوقع ({target_time.strftime('%I:%M %p')}). ادخل للموقع الآن!"
+                        Thread(target=schedule_reminder, args=(seconds_to_reminder, rem_msg)).start()
+
                 last_state = current_state
+
+            # 2. إرسال رسالة طمأنينة كل 10 دقائق
+            if time.time() - last_ping_time >= 600: # 600 ثانية = 10 دقائق
+                bot.send_message(CHAT_ID, "🔍 أنا أعمل على الفحص يا عبدالله، ولا يوجد أي تطور حالياً. سأخبرك فور حدوث أي شيء.")
+                last_ping_time = time.time()
+
         except Exception as e:
-            print(f"خطأ: {e}")
+            print(f"خطأ في الفحص: {e}")
         
-        time.sleep(60) # فحص كل دقيقة لرصد اللحظة بدقة
+        time.sleep(60) # فحص كل دقيقة لضمان السرعة
 
 if __name__ == "__main__":
     Thread(target=run).start()
     bot.remove_webhook()
-    # تشغيل المراقبة
     Thread(target=monitor_sakani).start()
     bot.infinity_polling()
