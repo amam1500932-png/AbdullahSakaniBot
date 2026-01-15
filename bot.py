@@ -14,7 +14,7 @@ URL_SAKANI = "https://sakani.sa/app/land-projects"
 
 app = Flask('')
 @app.route('/')
-def home(): return "✅ البوت يعمل ومستقر!"
+def home(): return "✅ نظام المراقبة يعمل بنجاح!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -24,12 +24,13 @@ bot = telebot.TeleBot(TOKEN)
 
 # دالة التذكير قبل النزول بـ 10 دقائق
 def send_reminder(target_time_str):
-    bot.send_message(CHAT_ID, f"⏰ **تذكير يا عبدالله!**\nبقي 10 دقائق على موعد النزول المتوقع ({target_time_str}). ادخل للموقع الآن!")
+    try:
+        bot.send_message(CHAT_ID, f"⏰ **تذكير يا عبدالله!**\nبقي 10 دقائق على موعد النزول المتوقع ({target_time_str}). ادخل للموقع الآن!")
+    except: pass
 
 def monitor_sakani():
     last_state = ""
     last_ping = time.time()
-    print("بدأ الفحص...")
     
     while True:
         try:
@@ -38,24 +39,32 @@ def monitor_sakani():
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
-                current_state = soup.get_text()
+                # استخراج النصوص المهمة (أرقام القطع والمخططات)
+                important_text = ""
+                for tag in soup.find_all(['h3', 'span', 'div'], class_=lambda x: x and 'card' in x):
+                    important_text += tag.get_text() + " "
+                
+                current_state = important_text if important_text.strip() else soup.get_text()
 
                 # رصد التغيير (إلغاء أو إضافة)
                 if last_state != "" and current_state != last_state:
                     now = datetime.now() + timedelta(hours=3)
                     target_time = now + timedelta(hours=2)
                     
-                    msg = (f"⚠️ **رصد تغيير/إلغاء الآن!**\n\n"
+                    # استخراج "رقم القطعة" المكتشفة من النص الجديد
+                    details = "تغير في أرقام المخطط أو عدد القطع"
+                    
+                    msg = (f"⚠️ **تنبيه: رصد إلغاء/تغيير الآن!**\n\n"
+                           f"📍 التفاصيل: {details}\n"
                            f"⏰ وقت الرصد: {now.strftime('%I:%M %p')}\n"
-                           f"🚀 **موعد النزول المتوقع:** {target_time.strftime('%I:%M %p')}\n"
-                           f"🔗 [رابط الموقع]({URL_SAKANI})")
+                           f"🚀 **موعد النزول:** {target_time.strftime('%I:%M %p')}\n"
+                           f"🔗 [اضغط هنا لفتح المخطط]({URL_SAKANI})")
                     bot.send_message(CHAT_ID, msg, parse_mode='Markdown')
                     
                     # جدولة التذكير قبل النزول بـ 10 دقائق
                     delay = (target_time - timedelta(minutes=10) - now).total_seconds()
                     if delay > 0:
-                        t = Thread(target=lambda: (time.sleep(delay), send_reminder(target_time.strftime('%I:%M %p'))))
-                        t.start()
+                        Thread(target=lambda: (time.sleep(delay), send_reminder(target_time.strftime('%I:%M %p')))).start()
 
                 last_state = current_state
 
@@ -65,19 +74,15 @@ def monitor_sakani():
                 last_ping = time.time()
 
         except Exception as e: print(f"Error: {e}")
-        time.sleep(60)
+        time.sleep(60) # فحص كل دقيقة
 
-# --- التشغيل الصحيح لإصلاح التوقف ---
 if __name__ == "__main__":
-    # 1. تنظيف أي جلسة قديمة (حل مشكلة عدم الرد)
+    # حل مشكلة الـ Conflict وتوقف الرد
     bot.remove_webhook()
+    time.sleep(1) 
     
-    # 2. تشغيل سيرفر الويب
     Thread(target=run_flask).start()
-    
-    # 3. تشغيل المراقبة
     Thread(target=monitor_sakani).start()
     
-    # 4. بدء استقبال الرسائل (Start/Test)
-    print("البوت جاهز للاستقبال...")
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    print("البوت بدأ الاستماع...")
+    bot.infinity_polling(timeout=20, long_polling_timeout=10)
