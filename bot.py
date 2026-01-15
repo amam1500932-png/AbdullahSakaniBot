@@ -2,9 +2,11 @@ import cloudscraper
 from bs4 import BeautifulSoup
 import telebot
 import re
+import time
+import random
 from datetime import datetime
 
-# بيانات البوت الصحيحة
+# بيانات البوت
 API_TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
 CHAT_ID = '-1003269925362'
 bot = telebot.TeleBot(API_TOKEN)
@@ -12,16 +14,26 @@ bot = telebot.TeleBot(API_TOKEN)
 URL_SAKANI = "https://sakani.sa/app/land-projects/584"
 
 # ذاكرة البوت
-last_known_lands = {} 
-reserved_lands_log = {} 
+last_known_lands = {}
+reserved_lands_log = {}
 
-def check_sakani_intelligent():
+def check_sakani_stealth():
     global last_known_lands, reserved_lands_log
-    # استخدام نفس الصيغة الناجحة لتجاوز خطأ 403
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome','platform': 'windows','desktop': True})
+    
+    # اختيار بصمة متصفح عشوائية في كل مرة لتجاوز حظر 403
+    browsers = ['chrome', 'firefox', 'safari']
+    current_browser = random.choice(browsers)
+    
+    scraper = cloudscraper.create_scraper(
+        browser={'browser': current_browser, 'platform': 'windows', 'desktop': True}
+    )
     
     try:
+        # تأخير عشوائي بسيط قبل الطلب لكسر نمط البوت
+        time.sleep(random.uniform(2, 5))
+        
         response = scraper.get(URL_SAKANI, timeout=30)
+        
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             all_links = soup.find_all('a', href=True)
@@ -29,49 +41,39 @@ def check_sakani_intelligent():
             current_lands = {}
             for link in all_links:
                 href = link['href']
-                # استخراج القطع التي تحتوي على روابط وحدات
                 if '/units/' in href or '/land-projects/584/' in href:
-                    unit_numbers = re.findall(r'\d+', href)
-                    if unit_numbers:
-                        unit_number = unit_numbers[-1]
-                        full_url = f"https://sakani.sa{href}" if href.startswith('/') else href
-                        current_lands[unit_number] = full_url
+                    nums = re.findall(r'\d+', href)
+                    if nums:
+                        unit_number = nums[-1]
+                        current_lands[unit_number] = f"https://sakani.sa{href}" if href.startswith('/') else href
 
             current_set = set(current_lands.keys())
             last_set = set(last_known_lands.keys())
 
-            # رصد حجز جديد
+            # رصد حجز أو إلغاء
             if last_set:
-                new_reservations = last_set - current_set
-                for land_id in new_reservations:
+                # إلغاء حجز (أرض ظهرت)
+                new_ones = current_set - last_set
+                for land_id in new_ones:
+                    bot.send_message(CHAT_ID, f"✨ **عاجل: قطعة أرض توفرت الآن!**\n🔢 رقم القطعة: {land_id}\n🔗 الرابط:\n{current_lands[land_id]}")
+                
+                # حجز جديد (أرض اختفت)
+                removed_ones = last_set - current_set
+                for land_id in removed_ones:
                     reserved_lands_log[land_id] = datetime.now()
-                    bot.send_message(CHAT_ID, f"🚫 **حجز جديد!**\n🔢 قطعة رقم: {land_id}\n⏰ وقت الرصد: {datetime.now().strftime('%H:%M:%S')}\nالبوت يراقبها الآن تمهيداً لإلغائها.")
+                    bot.send_message(CHAT_ID, f"🚫 **تم حجز قطعة أرض: {land_id}**\n⏰ وقت الحجز: {datetime.now().strftime('%H:%M:%S')}")
 
-            # رصد إلغاء حجز (عودة قطعة)
-            if last_set:
-                cancelled_reservations = current_set - last_set
-                for land_id in cancelled_reservations:
-                    msg = (
-                        f"✨ **عاجل: أرض متاحة (إلغاء حجز)!**\n\n"
-                        f"🔢 رقم القطعة: {land_id}\n"
-                        f"🔗 الرابط المباشر:\n{current_lands[land_id]}"
-                    )
-                    bot.send_message(CHAT_ID, msg)
-                    if land_id in reserved_lands_log:
-                        del reserved_lands_log[land_id]
-
-            # تحديث الذاكرة
             last_known_lands = current_lands
-            
-            # رسالة الحالة لتأكيد العمل بدون خطأ 403
-            bot.send_message(CHAT_ID, f"🔍 فحص ذكي: لا تغيير.\n✅ متاح: {len(current_set)} أرض.\n🎯 يراقب {len(reserved_lands_log)} حجوزات.")
-
+            bot.send_message(CHAT_ID, f"🔍 فحص ناجح للمخطط 584.\n✅ متاح: {len(current_set)} أرض.\n🎯 يراقب {len(reserved_lands_log)} قطعة محجوزة.")
+        
         else:
-            # تنبيه في حال عودة خطأ 403 أو غيره
-            print(f"خطأ {response.status_code}")
-            
+            print(f"فشل الاتصال: كود {response.status_code}")
+            # إذا استمر 403 سنرسل تنبيهاً واحداً فقط
+            if response.status_code == 403:
+                bot.send_message(CHAT_ID, "⚠️ تنبيه: الموقع قام بتحديث الحماية (403)، جاري محاولة التجاوز تلقائياً...")
+
     except Exception as e:
-        print(f"حدث خطأ: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    check_sakani_intelligent()
+    check_sakani_stealth()
