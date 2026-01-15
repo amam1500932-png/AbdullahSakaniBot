@@ -1,4 +1,4 @@
 pyTelegramBotAPI
-flask
 requests
 beautifulsoup4
+cloudscraper
