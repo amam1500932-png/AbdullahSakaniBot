@@ -2,90 +2,84 @@ import requests
 import telebot
 import time
 import os
-import re
+import random
 from flask import Flask
 from threading import Thread
 
-# 1. إعداد خادم الويب للبقاء حياً على Render
 app = Flask('')
 @app.route('/')
-def home(): return "Multi-Feature Radar is Active"
+def home(): return "Advanced Deep Radar Active"
 
 def run():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# 2. إعدادات التليجرام
 API_TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
 CHAT_ID = '-1003269925362'
 bot = telebot.TeleBot(API_TOKEN)
 
-# 3. بيانات المخطط 584 وروابط التجاوز
-URL_SAKANI = "https://sakani.sa/app/land-projects/584"
-MAP_LINK = "https://sakani.sa/app/land-projects/584/map"
-# جسر AllOrigins لتخطي الحظر
-BRIDGE_URL = "https://api.allorigins.win/get?url="
+# الروابط والمخطط
+PROJECT_ID = "584"
+URL_SAKANI = f"https://sakani.sa/app/land-projects/{PROJECT_ID}"
+MAP_LINK = f"https://sakani.sa/app/land-projects/{PROJECT_ID}/map"
+# رابط بيانات تطبيق الجوال (أكثر دقة وأقل حظراً)
+DEEP_API = f"https://sakani.sa/api/v1/land-projects/{PROJECT_ID}/units_summary"
 
 last_count = None
 last_heartbeat = time.time()
 
-def fetch_data_securely():
-    """محاولة جلب البيانات عبر جسر خارجي لتغيير الـ IP وتخطي الحجب"""
+def fetch_data_advanced():
+    """محاكاة تصفح حقيقية جداً لتجاوز الحماية"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'ar-SA,ar;q=0.9',
+        'Origin': 'https://sakani.sa',
+        'Referer': URL_SAKANI,
+        'X-Requested-With': 'XMLHttpRequest'
+    }
+    
     try:
-        # إضافة توقيت عشوائي لمنع الكاش
-        target = f"{URL_SAKANI}?t={int(time.time())}"
-        response = requests.get(f"{BRIDGE_URL}{target}", timeout=35)
+        # إضافة باراميتر عشوائي لتجاوز كاش السيرفر
+        response = requests.get(f"{DEEP_API}?v={random.randint(100,999)}", headers=headers, timeout=25)
         
         if response.status_code == 200:
-            content = response.json().get('contents', '')
-            # البحث عن عدد الوحدات المتاحة في كود الصفحة (برمجي ونصي)
-            match = re.search(r'available_units_count["\s:]+(\d+)', content)
-            if match:
-                return int(match.group(1))
+            data = response.json()
+            return data.get('available_units_count')
         return None
-    except Exception as e:
-        print(f"Fetch Error: {e}")
+    except:
         return None
 
 def bot_loop():
     global last_count, last_heartbeat
-    bot.send_message(CHAT_ID, "🛡️ **بدء تشغيل الرادار الشامل...**\nجاري محاولة تجاوز الحجب وجلب البيانات.")
+    bot.send_message(CHAT_ID, "🚀 **تفعيل الرادار العميق (محاكاة الجوال)...**\nجاري محاولة تجاوز الحظر الأخير.")
     
     while True:
-        current = fetch_data_securely()
+        current = fetch_data_advanced()
         
         if current is not None:
-            # أول قراءة ناجحة
             if last_count is None:
                 last_count = current
-                bot.send_message(CHAT_ID, f"🎯 **تم الاتصال بنجاح!**\n📊 العدد الحالي للأراضي المتاحة: {current}\n✅ تم تفعيل كل المميزات (رصد الإلغاء والحجز).")
+                bot.send_message(CHAT_ID, f"🎯 **نجح الاختراق!**\n📊 العدد الحالي: {current}\n✅ الرادار يراقب الزيادة والنقصان الآن.")
             
-            # حالة توفر أرض جديدة (إلغاء من شخص آخر)
             elif current > last_count:
                 diff = current - last_count
-                msg = (f"✨ **عاجل: توفرت {diff} أرض جديدة!**\n"
-                       f"📊 الإجمالي الآن: {current}\n"
-                       f"⚠️ **ملاحظة**: قد يستغرق ظهورها في الخريطة ساعتين.\n\n"
-                       f"🔗 المخطط: {URL_SAKANI}\n"
-                       f"🗺 الخريطة: {MAP_LINK}")
-                bot.send_message(CHAT_ID, msg)
+                bot.send_message(CHAT_ID, f"✨ **عاجل: توفرت {diff} أرض جديدة!**\n📊 الإجمالي: {current}\n⚠️ قد تظهر في الخريطة بعد ساعتين.\n\n🔗 {URL_SAKANI}")
                 last_count = current
             
-            # حالة حجز أرض
             elif current < last_count:
                 diff = last_count - current
-                bot.send_message(CHAT_ID, f"🚫 **تنبيه: تم حجز {diff} أرض.**\n📊 المتبقي الآن: {current}")
+                bot.send_message(CHAT_ID, f"🚫 **تنبيه: حجز أرض.**\n📊 المتبقي: {current}")
                 last_count = current
-
-        # رسالة الطمأنة كل 10 دقائق
+        
         if time.time() - last_heartbeat >= 600:
-            status_text = f"📊 العدد الحالي: {last_count}" if last_count is not None else "⚠️ لا زال الحظر مستمراً"
-            bot.send_message(CHAT_ID, f"🤖 **الرادار يعمل بنشاط...**\n{status_text}")
+            status = f"📊 العدد: {last_count}" if last_count is not None else "⚠️ الحماية لا تزال نشطة"
+            bot.send_message(CHAT_ID, f"🤖 **الرادار يعمل...**\n{status}")
             last_heartbeat = time.time()
             
-        time.sleep(60) # فحص كل دقيقة لضمان استقرار الاتصال
+        # وقت فحص عشوائي قليلاً لتجنب اكتشاف البوت
+        time.sleep(random.randint(40, 60))
 
 if __name__ == "__main__":
-    # تشغيل خادم الويب والفحص في وقت واحد
     Thread(target=run).start()
     bot_loop()
