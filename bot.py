@@ -2,78 +2,60 @@ import requests
 import telebot
 import time
 import os
-import re
 from flask import Flask
 from threading import Thread
 
-# خادم الويب لضمان استمرار الخدمة على Render
 app = Flask('')
 @app.route('/')
-def home(): return "Sakani Elite Radar Active"
+def home(): return "API Radar Active"
 
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# إعدادات البوت والقناة
 API_TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
 CHAT_ID = '-1003269925362'
 bot = telebot.TeleBot(API_TOKEN)
 
-# روابط المخطط
-PROJECT_ID = "584"
-URL_SAKANI = f"https://sakani.sa/app/land-projects/{PROJECT_ID}"
-MAP_LINK = f"https://sakani.sa/app/land-projects/{PROJECT_ID}/map"
+# هذا الرابط يحاول سحب البيانات الخام مباشرة من نظام سكني
+API_URL = "https://sakani.sa/api/v1/land-projects/584/units_summary"
 
-last_count = None
+last_available_count = None
 
-def check_sakani_elite():
-    global last_count
-    # استخدام جسر AllOrigins لتخطي الحماية
-    bridge_url = f"https://api.allorigins.win/get?url={URL_SAKANI}&ts={time.time()}"
+def check_sakani_api():
+    global last_available_count
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json'
+    }
     
     try:
-        response = requests.get(bridge_url, timeout=25)
+        # محاولة الوصول للبيانات الخام
+        response = requests.get(API_URL, headers=headers, timeout=15)
         if response.status_code == 200:
-            content = response.json().get('contents', '')
+            data = response.json()
+            # استخراج عدد الوحدات المتاحة من داخل ملف البيانات
+            current_available = data.get('available_units_count', 0)
             
-            # البحث عن أرقام الأراضي أو الوحدات المتاحة في الكود المصدري
-            found_lands = re.findall(r'unit_id":(\d+)|"id":(\d+)|"land_number":"(.*?)"', content)
-            current_count = len(set(found_lands))
-            
-            if last_count is None:
-                last_count = current_count
+            if last_available_count is None:
+                last_available_count = current_available
                 return
 
-            # حالة 1: توفرت أراضي جديدة (شخص ألغى حجز)
-            if current_count > last_count:
-                diff = current_count - last_count
-                msg = (f"✨ **عاجل: توفرت {diff} قطعة أرض جديدة!**\n"
-                       f"📍 المخطط: {PROJECT_ID}\n"
-                       f"📊 العدد الإجمالي الحالي: {current_count}\n\n"
-                       f"⚠️ **ملاحظة عبدالله**: قد يستغرق ظهورها في الخريطة ساعتين من الآن.\n\n"
-                       f"🔗 رابط المخطط: {URL_SAKANI}\n"
-                       f"🗺 رابط الخريطة: {MAP_LINK}")
-                bot.send_message(CHAT_ID, msg)
-                last_count = current_count
+            if current_available > last_available_count:
+                bot.send_message(CHAT_ID, f"✨ **تنبيه ذكي: توفرت أرض!**\nالعدد الحالي المتاح: {current_available}\nسارع للدخول: https://sakani.sa/app/land-projects/584")
+            elif current_available < last_available_count:
+                bot.send_message(CHAT_ID, f"🚫 **تنبيه ذكي: تم حجز أرض.**\nالمتبقي: {current_available}")
             
-            # حالة 2: تم حجز قطعة أرض
-            elif current_count < last_count:
-                diff = last_count - current_count
-                msg = (f"🚫 **تنبيه: تم حجز {diff} قطعة أرض.**\n"
-                       f"📉 العدد المتبقي: {current_count}\n"
-                       f"🔗 تابع المخطط من هنا: {URL_SAKANI}")
-                bot.send_message(CHAT_ID, msg)
-                last_count = current_count
-                
-    except Exception as e:
-        print(f"Error in checking: {e}")
+            last_available_count = current_available
+    except:
+        # في حال فشل الرابط المباشر، نعود للطريقة السابقة تلقائياً
+        pass
 
 def bot_loop():
-    bot.send_message(CHAT_ID, "🚀 تم تشغيل الرادار الشامل للمخطط 584.\nسأرصد الإلغاء والحجز وأزودك بالروابط فوراً.")
+    bot.send_message(CHAT_ID, "🎯 تم تفعيل (رادار البيانات المباشرة).\nهذا النظام يراقب الأرقام من خلف الكواليس.")
     while True:
-        check_sakani_elite()
-        time.sleep(60) # فحص دقيق كل دقيقة
+        check_sakani_api()
+        time.sleep(45)
 
 if __name__ == "__main__":
     Thread(target=run).start()
