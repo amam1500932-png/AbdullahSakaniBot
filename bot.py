@@ -1,49 +1,89 @@
-import requests
 import telebot
+import requests
 import time
+import os
+import threading
+import http.server
+import socketserver
 
-# --- إعداداتك الخاصة ---
-TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
-CHAT_ID = '-1003269925362'
+# --- بياناتك الخاصة ---
+TOKEN = '7611681755:AAH_GNo887z0Ff6N6B_p9tG6H7-526Eoy_c'
+CHAT_ID = '7091490226'
+PROXY = "http://brd-customer-hl_59665809-zone-residential_proxy1:y06f691h8u67@brd.superproxy.io:22225"
+
 bot = telebot.TeleBot(TOKEN)
+proxies = {"http": PROXY, "https": PROXY}
 
-# --- إعدادات البروكسي من صورتك ---
-proxy_url = "http://9fc0be730450f5b0e2f3:1ee7512fcb506872@gw.dataimpulse.com:823"
-proxies = {"http": proxy_url, "https": proxy_url}
-
-last_counts = {}
-
-def scan_sakani():
-    global last_counts
-    url = "https://sakani.sa/api/v1/land-projects/summary"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    
+# --- 1. حل مشكلة توقف Render ---
+def keep_alive():
     try:
-        # الفحص باستخدام البروكسي لتجاوز 403
-        response = requests.get(url, headers=headers, proxies=proxies, timeout=30)
-        if response.status_code == 200:
-            projects = response.json()
-            for p in projects:
-                p_id = str(p['id'])
-                name = p['name']
-                count = p.get('available_units_count', 0)
-                
-                if p_id not in last_counts:
-                    last_counts[p_id] = count
-                    continue
-                
-                if count > last_counts[p_id]:
-                    msg = f"✨ **أرض متوفرة الآن!**\n🏗 المخطط: {name}\n📊 العدد المتوفر: {count}"
-                    bot.send_message(CHAT_ID, msg)
-                last_counts[p_id] = count
-            print(f"✅ Scan Success at {time.strftime('%H:%M:%S')}")
-        else:
-            print(f"❌ Error {response.status_code}")
-    except Exception as e:
-        print(f"⚠️ Proxy Error: {e}")
+        port = int(os.environ.get("PORT", 10000))
+        handler = http.server.SimpleHTTPRequestHandler
+        with socketserver.TCPServer(("", port), handler) as httpd:
+            httpd.serve_forever()
+    except: pass
 
-bot.send_message(CHAT_ID, "🚀 رادار المحترفين يعمل الآن عبر البروكسي السكني..")
+threading.Thread(target=keep_alive, daemon=True).start()
 
-while True:
-    scan_sakani()
-    time.sleep(45) # وقت آمن جداً مع البروكسي
+# --- 2. رادار سكني الشامل للمخططات المجانية ---
+def check_all_free_lands():
+    # رابط البحث عن جميع المخططات المجانية (Free Lands)
+    search_api = "https://sakani.sa/api/v1/market_place/products?category=free_land"
+    
+    last_known_lands = {} # لمراقبة التغيرات في الحالة
+
+    while True:
+        try:
+            # طلب قائمة المخططات/المنتجات
+            response = requests.get(search_api, proxies=proxies, timeout=25)
+            all_products = response.json().get('data', [])
+
+            for product in all_products:
+                p_id = product.get('id') # معرف المخطط
+                p_name = product.get('name') # اسم المخطط
+                p_city = product.get('city_name') # المدينة
+                
+                # الآن ندخل داخل كل مخطط لنفحص حالة القطع (إذا كان الـ API يوفرها)
+                # ملاحظة: بعض المخططات تحتاج طلب منفصل لكل مشروع p_id
+                plots_url = f"https://sakani.sa/api/v1/plots?project_id={p_id}"
+                plot_res = requests.get(plots_url, proxies=proxies, timeout=20)
+                plots_data = plot_res.json().get('data', [])
+
+                for plot in plots_data:
+                    land_id = plot.get('id')
+                    land_num = plot.get('plot_number')
+                    status = plot.get('status') # available أو reserved
+
+                    # مفتاح فريد لكل أرض (معرف المخطط + معرف الأرض)
+                    unique_key = f"{p_id}_{land_id}"
+
+                    if unique_key not in last_known_lands:
+                        last_known_lands[unique_key] = status
+                        continue
+
+                    # الحالة 1: كانت محجوزة وصارت متاحة (إلغاء حجز)
+                    if status == 'available' and last_known_lands[unique_key] == 'reserved':
+                        msg = (f"✅ **إلغاء حجز قطعة أرض!**\n\n"
+                               f"🏙️ المخطط: `{p_name}` ({p_city})\n"
+                               f"📍 رقم القطعة: `{land_num}`\n"
+                               f"🗺️ رابط المخطط: https://sakani.sa/app/map/{p_id}\n"
+                               f"🔗 رابط القطعة: https://sakani.sa/app/map/{p_id}?land={land_id}")
+                        bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+
+                    # الحالة 2: تم حجز أرض كانت متاحة
+                    elif status == 'reserved' and last_known_lands[unique_key] == 'available':
+                        msg = (f"🔒 **تم حجز أرض جديدة**\n\n"
+                               f"🏙️ المخطط: `{p_name}` ({p_city})\n"
+                               f"📍 رقم الأرض: `{land_num}`\n"
+                               f"🔗 رابط الأرض: https://sakani.sa/app/map/{p_id}?land={land_id}")
+                        bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+
+                    last_known_lands[unique_key] = status
+
+        except Exception as e:
+            print(f"خطأ في الفحص الشامل: {e}")
+        
+        time.sleep(45) # فحص الدورة كاملة كل 45 ثانية
+
+print("الرادار الشامل لكل المخططات المجانية بدأ العمل...")
+check_all_free_lands()
