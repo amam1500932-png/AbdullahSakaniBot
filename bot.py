@@ -6,16 +6,21 @@ import threading
 import http.server
 import socketserver
 
-# --- بياناتك الحقيقية من الصور ---
+# --- بياناتك المعتمدة ---
 TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
-CHAT_ID = '-1003269925362' # أيدي القناة
-# البروكسي الجديد من صورتك الأخيرة
+CHAT_ID = '-1003269925362' 
 PROXY_URL = "http://9fc0be730450f5b0e2f3:1ee7512fcb506872@gw.dataimpulse.com:823"
 
 bot = telebot.TeleBot(TOKEN)
 proxies = {"http": PROXY_URL, "https": PROXY_URL}
 
-# --- حل مشكلة توقف Render (المنفذ 10000) ---
+# رأس الطلب لإقناع الموقع أننا متصفح حقيقي
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache'
+}
+
 def keep_alive():
     try:
         port = int(os.environ.get("PORT", 10000))
@@ -25,21 +30,21 @@ def keep_alive():
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# --- رادار سكني الشامل ---
 def check_all_free_lands():
-    try:
-        # رسالة ترحيبية للقناة للتأكد من الاتصال
-        bot.send_message(CHAT_ID, "🚀 تم تشغيل الرادار الشامل بنجاح!\n📡 يتم الآن مراقبة كافة المخططات المجانية...")
-    except Exception as e:
-        print(f"خطأ في إرسال التنبيه: {e}")
-
-    search_api = "https://sakani.sa/api/v1/market_place/products?category=free_land"
+    # إشعار عند التشغيل للتأكد من الاتصال
+    bot.send_message(CHAT_ID, "🔄 تم إعادة تشغيل الرادار بنظام التحديث الفوري...")
+    
     last_known_lands = {}
 
     while True:
         try:
-            # استخدام البروكسي الجديد لطلب البيانات
-            response = requests.get(search_api, proxies=proxies, timeout=25)
+            # طلب قائمة المخططات مع منع التخزين المؤقت (Cache)
+            response = requests.get(
+                "https://sakani.sa/api/v1/market_place/products?category=free_land", 
+                proxies=proxies, 
+                headers=HEADERS, 
+                timeout=30
+            )
             all_products = response.json().get('data', [])
 
             for product in all_products:
@@ -47,40 +52,38 @@ def check_all_free_lands():
                 p_name = product.get('name')
                 p_city = product.get('city_name')
                 
-                plots_url = f"https://sakani.sa/api/v1/plots?project_id={p_id}"
-                plot_res = requests.get(plots_url, proxies=proxies, timeout=20)
+                # طلب بيانات المخطط
+                plot_res = requests.get(
+                    f"https://sakani.sa/api/v1/plots?project_id={p_id}", 
+                    proxies=proxies, 
+                    headers=HEADERS, 
+                    timeout=25
+                )
                 plots_data = plot_res.json().get('data', [])
 
                 for plot in plots_data:
-                    land_id = plot.get('id')
-                    land_num = plot.get('plot_number')
-                    status = plot.get('status')
+                    land_id, land_num, status = plot.get('id'), plot.get('plot_number'), plot.get('status')
                     unique_key = f"{p_id}_{land_id}"
 
+                    # إذا كانت أول مرة يرى فيها البوت الأرض، يخزنها فقط
                     if unique_key not in last_known_lands:
                         last_known_lands[unique_key] = status
                         continue
 
-                    # تنبيه إلغاء الحجز
+                    # إذا تغيرت الحالة من محجوزة إلى متاحة
                     if status == 'available' and last_known_lands[unique_key] == 'reserved':
-                        msg = (f"✅ **إلغاء حجز قطعة أرض!**\n\n"
-                               f"🏙️ المخطط: `{p_name}` ({p_city})\n"
-                               f"📍 رقم القطعة: `{land_num}`\n"
-                               f"🔗 الرابط: https://sakani.sa/app/map/{p_id}?land={land_id}")
-                        bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-
-                    # تنبيه حجز جديد
+                        bot.send_message(CHAT_ID, f"🔔 **أرض توفرت الآن!**\n🏙️ {p_name} ({p_city})\n📍 قطعة: `{land_num}`\n🔗 https://sakani.sa/app/map/{p_id}?land={land_id}", parse_mode="Markdown")
+                    
+                    # إذا تم حجز أرض كانت متاحة
                     elif status == 'reserved' and last_known_lands[unique_key] == 'available':
-                        msg = (f"🔒 **تم حجز أرض جديدة**\n\n"
-                               f"🏙️ المخطط: `{p_name}` ({p_city})\n"
-                               f"📍 رقم الأرض: `{land_num}`\n"
-                               f"🔗 الرابط: https://sakani.sa/app/map/{p_id}?land={land_id}")
-                        bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+                        bot.send_message(CHAT_ID, f"🔒 **تم الحجز**\n🏙️ {p_name} ({p_city})\n📍 قطعة: `{land_num}`", parse_mode="Markdown")
 
                     last_known_lands[unique_key] = status
+                    
         except Exception as e:
-            print(f"فشل في الدورة: {e}")
+            print(f"خطأ في الاتصال: {e}")
         
+        # الانتظار لمدة دقيقة لتقليل الضغط وضمان جلب بيانات جديدة
         time.sleep(60)
 
 check_all_free_lands()
