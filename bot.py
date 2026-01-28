@@ -6,15 +6,16 @@ import threading
 import http.server
 import socketserver
 
-# --- بياناتك الخاصة ---
-TOKEN = '7611681755:AAH_GNo887z0Ff6N6B_p9tG6H7-526Eoy_c'
-CHAT_ID = '7091490226'
-PROXY = "http://brd-customer-hl_59665809-zone-residential_proxy1:y06f691h8u67@brd.superproxy.io:22225"
+# --- بياناتك الحقيقية من الصور ---
+TOKEN = '8499439468:AAEOKClXi93_bmOeAO7aQ9bvpGOi5w-jOQo'
+CHAT_ID = '-1003269925362' # أيدي القناة
+# البروكسي الجديد من صورتك الأخيرة
+PROXY_URL = "http://9fc0be730450f5b0e2f3:1ee7512fcb506872@gw.dataimpulse.com:823"
 
 bot = telebot.TeleBot(TOKEN)
-proxies = {"http": PROXY, "https": PROXY}
+proxies = {"http": PROXY_URL, "https": PROXY_URL}
 
-# --- حل مشكلة التوقف (Keep Alive) ---
+# --- حل مشكلة توقف Render (المنفذ 10000) ---
 def keep_alive():
     try:
         port = int(os.environ.get("PORT", 10000))
@@ -24,16 +25,20 @@ def keep_alive():
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# رسالة تأكيد التشغيل
-bot.send_message(CHAT_ID, "🚀 تم تشغيل الرادار الشامل لكل المخططات بنجاح! جاري الفحص الآن...")
-
-# --- الرادار الشامل ---
+# --- رادار سكني الشامل ---
 def check_all_free_lands():
+    try:
+        # رسالة ترحيبية للقناة للتأكد من الاتصال
+        bot.send_message(CHAT_ID, "🚀 تم تشغيل الرادار الشامل بنجاح!\n📡 يتم الآن مراقبة كافة المخططات المجانية...")
+    except Exception as e:
+        print(f"خطأ في إرسال التنبيه: {e}")
+
     search_api = "https://sakani.sa/api/v1/market_place/products?category=free_land"
     last_known_lands = {}
 
     while True:
         try:
+            # استخدام البروكسي الجديد لطلب البيانات
             response = requests.get(search_api, proxies=proxies, timeout=25)
             all_products = response.json().get('data', [])
 
@@ -42,7 +47,6 @@ def check_all_free_lands():
                 p_name = product.get('name')
                 p_city = product.get('city_name')
                 
-                # فحص قطع الأراضي داخل كل مخطط
                 plots_url = f"https://sakani.sa/api/v1/plots?project_id={p_id}"
                 plot_res = requests.get(plots_url, proxies=proxies, timeout=20)
                 plots_data = plot_res.json().get('data', [])
@@ -57,16 +61,15 @@ def check_all_free_lands():
                         last_known_lands[unique_key] = status
                         continue
 
-                    # إشعار إلغاء حجز (أصبحت متاحة)
+                    # تنبيه إلغاء الحجز
                     if status == 'available' and last_known_lands[unique_key] == 'reserved':
                         msg = (f"✅ **إلغاء حجز قطعة أرض!**\n\n"
                                f"🏙️ المخطط: `{p_name}` ({p_city})\n"
                                f"📍 رقم القطعة: `{land_num}`\n"
-                               f"🗺️ المخطط: https://sakani.sa/app/map/{p_id}\n"
-                               f"🔗 القطعة: https://sakani.sa/app/map/{p_id}?land={land_id}")
+                               f"🔗 الرابط: https://sakani.sa/app/map/{p_id}?land={land_id}")
                         bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
 
-                    # إشعار حجز جديد
+                    # تنبيه حجز جديد
                     elif status == 'reserved' and last_known_lands[unique_key] == 'available':
                         msg = (f"🔒 **تم حجز أرض جديدة**\n\n"
                                f"🏙️ المخطط: `{p_name}` ({p_city})\n"
@@ -75,9 +78,8 @@ def check_all_free_lands():
                         bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
 
                     last_known_lands[unique_key] = status
-
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"فشل في الدورة: {e}")
         
         time.sleep(60)
 
